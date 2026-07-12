@@ -31,4 +31,5 @@ try {
   console.error('🔥 Firebase Admin Initialization Error:', error);
 }
 
-export { admin, isFirebaseInitialized };
+export const getIsFirebaseInitialized = () => isFirebaseInitialized;
+export { admin };

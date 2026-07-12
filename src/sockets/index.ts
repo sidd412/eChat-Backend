@@ -5,7 +5,7 @@ import { Message } from '../models/message.model';
 import { Consent } from '../models/consent.model';
 import { Interaction } from '../models/interaction.model';
 import { redis } from '../config/redis';
-import { isFirebaseInitialized } from '../config/firebase';
+import { admin, getIsFirebaseInitialized } from '../config/firebase';
 import { getMessaging } from 'firebase-admin/messaging';
 import crypto from 'crypto';
 
@@ -339,8 +339,8 @@ export const initSockets = (io: Server) => {
           }
           
           // Send FCM Push Notification
-          console.log(`📨 [MSG] Checking FCM for consent notification. isFirebaseInitialized=${isFirebaseInitialized}, isNewConsentRequest=${isNewConsentRequest}`);
-          if (isFirebaseInitialized && isNewConsentRequest) {
+          console.log(`📨 [MSG] Checking FCM for consent notification. isFirebaseInitialized=${getIsFirebaseInitialized()}, isNewConsentRequest=${isNewConsentRequest}`);
+          if (getIsFirebaseInitialized() && isNewConsentRequest) {
             try {
               const receiverDb = await User.findOne({ userId: receiverId });
               const senderDb = await User.findOne({ userId: senderId });
@@ -394,8 +394,8 @@ export const initSockets = (io: Server) => {
             }
 
             // Send FCM Push Notification for normal messages if allowed
-            console.log(`📨 [MSG] Checking FCM for chat message push. isFirebaseInitialized=${isFirebaseInitialized}`);
-            if (isFirebaseInitialized) {
+            console.log(`📨 [MSG] Checking FCM for chat message push. isFirebaseInitialized=${getIsFirebaseInitialized()}`);
+            if (getIsFirebaseInitialized()) {
               try {
                 const receiverDb = await User.findOne({ userId: receiverId });
                 const senderDb = await User.findOne({ userId: senderId });

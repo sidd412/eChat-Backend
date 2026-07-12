@@ -5,7 +5,7 @@ import { Message } from '../models/message.model';
 import { Consent } from '../models/consent.model';
 import { Interaction } from '../models/interaction.model';
 import { redis } from '../config/redis';
-import { admin, getIsFirebaseInitialized } from '../config/firebase';
+import { getIsFirebaseInitialized } from '../config/firebase';
 import { getMessaging } from 'firebase-admin/messaging';
 import crypto from 'crypto';
 

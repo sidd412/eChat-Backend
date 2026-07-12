@@ -13,4 +13,44 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.put('/profile', { preHandler: [verifyJWT] }, updateProfile);
   fastify.post('/interaction', { preHandler: [verifyJWT] }, toggleInteraction);
   fastify.get('/interactions', { preHandler: [verifyJWT] }, getInteractions);
+
+  // Debug FCM route
+  fastify.get('/test-fcm/:userId', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    try {
+      const { User } = require('../models/user.model');
+      const { getIsFirebaseInitialized } = require('../config/firebase');
+      const { getMessaging } = require('firebase-admin/messaging');
+
+      if (!getIsFirebaseInitialized()) {
+        return reply.status(500).send({ error: 'Firebase is not initialized' });
+      }
+
+      const user = await User.findOne({ userId });
+      if (!user) {
+        return reply.status(404).send({ error: 'User not found in DB' });
+      }
+
+      if (!user.fcmToken) {
+        return reply.status(400).send({ error: 'User has no fcmToken in DB' });
+      }
+
+      const payload = {
+        notification: {
+          title: 'eChat Test',
+          body: 'If you see this, FCM is working perfectly!',
+        },
+        data: {
+          type: 'TEST_NOTIFICATION',
+          senderId: 'test_system',
+        },
+        token: user.fcmToken,
+      };
+
+      const result = await getMessaging().send(payload);
+      return { success: true, result, fcmToken: user.fcmToken };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message, stack: err.stack });
+    }
+  });
 }

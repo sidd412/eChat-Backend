@@ -8,6 +8,9 @@ try {
   if (process.env.FIREBASE_ADMIN_JSON) {
     // 1. Production Mode: Read from Environment Variable (Render)
     const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_JSON);
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     admin.initializeApp({
       credential: admin.cert(serviceAccount)
     });

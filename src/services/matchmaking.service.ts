@@ -109,15 +109,28 @@ export class MatchmakingService {
   public static async removeUser(userId: string, _gender: string, country: string): Promise<void> {
     await redis.del(`user:state:${userId}`);
     await redis.del(`user:busy:${userId}`);
+    await redis.srem('queue:global', userId);
     
-    // Remove from ALL country queues (both genders)
+    // For backward compatibility / safety:
     for (const g of ['Male', 'Female']) {
       await redis.srem(`queue:country:${country}:${g}`, userId);
     }
-    
-    // Remove from ALL Geo queues
     await redis.zrem('queue:geo:Male', userId);
     await redis.zrem('queue:geo:Female', userId);
+  }
+
+  // Calculate distance between two coordinates in km (Haversine formula)
+  private static calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c; // Distance in km
+    return d;
   }
 
   /**
@@ -125,179 +138,151 @@ export class MatchmakingService {
    * Higher score = better match. Minimum score = 0 (no preference alignment).
    * 
    * Scoring:
-   *   +2 = mutual gender preference match (both want each other's gender)
-   *   +1 = one-sided gender match (only one user prefers the other's gender)
-   *   +2 = mutual age range match (both in each other's preferred age range)
-   *   +1 = one-sided age match
-   *   
-   * Max possible score = 4 (perfect mutual match)
-   * Min possible score = 0 (no alignment at all, but still matchable)
+   *   +10 = mutual gender preference match (both want each other's gender)
+   *   +5 = one-sided gender match (only one user prefers the other's gender)
+   *   +6 = mutual age range match (both in each other's preferred age range)
+   *   +3 = one-sided age match
+   *   +4 = mutual location match (same country, or within distance radius if using km filter)
+   *   +2 = one-sided location match
    */
   private static scoreMatch(userA: UserState, userB: UserState): number {
     let score = 0;
 
-    // Gender preference scoring
+    // 1. Gender preference (Max 10 points)
     const aWantsB = userA.prefGender === 'All' || userA.prefGender === userB.gender;
     const bWantsA = userB.prefGender === 'All' || userB.prefGender === userA.gender;
-    if (aWantsB) score++;
-    if (bWantsA) score++;
+    if (aWantsB && bWantsA) {
+      score += 10;
+    } else if (aWantsB || bWantsA) {
+      score += 5;
+    }
 
-    // Age preference scoring
+    // 2. Age preference (Max 6 points)
     const bInARange = userB.age >= userA.prefMinAge && userB.age <= userA.prefMaxAge;
     const aInBRange = userA.age >= userB.prefMinAge && userA.age <= userB.prefMaxAge;
-    if (bInARange) score++;
-    if (aInBRange) score++;
+    if (bInARange && aInBRange) {
+      score += 6;
+    } else if (bInARange || aInBRange) {
+      score += 3;
+    }
+
+    // 3. Location/Country preference (Max 4 points)
+    if (userA.filterType === 'km' || userB.filterType === 'km') {
+      const distance = this.calculateDistance(userA.latitude, userA.longitude, userB.latitude, userB.longitude);
+      const aSatisfied = userA.filterType !== 'km' || distance <= userA.kmRadius;
+      const bSatisfied = userB.filterType !== 'km' || distance <= userB.kmRadius;
+      if (aSatisfied && bSatisfied) {
+        score += 4;
+      } else if (aSatisfied || bSatisfied) {
+        score += 2;
+      }
+    } else {
+      if (userA.country === userB.country) {
+        score += 4;
+      }
+    }
 
     return score;
   }
 
   /**
-   * Soft-preference matchmaking:
+   * soft-preference matchmaking with instant matching:
    * 
-   * 1. Collect ALL available candidates (not filtered by preference).
-   * 2. Score each candidate based on how well preferences align.
-   * 3. Pick the BEST scoring candidate.
-   * 4. If no candidates exist, add self to queue and wait.
-   * 
-   * This ensures:
-   * - If only 2 people are online, they ALWAYS match (regardless of preferences).
-   * - If multiple people are online, the best preference match is prioritized.
-   * - Preferences are "soft" — they influence priority, not eligibility.
+   * 1. Collect ALL candidate IDs currently waiting in `queue:global` (excluding self).
+   * 2. Filter out candidates who are already busy.
+   * 3. Fetch user state for candidates (limit to 50 for speed).
+   * 4. If no candidates exist, add self to `queue:global` and return null.
+   * 5. If candidates exist:
+   *    - If only 1 candidate, match immediately.
+   *    - If multiple candidates, score them based on preferences and select the highest scorer.
+   * 6. Lock both users atomically to prevent double-matching, remove from queue, generate Agora token.
    */
   public static async findMatch(user: UserState, _userName: string): Promise<MatchResult | null> {
     const unlock = await matchMutex.lock();
     try {
-      console.log(`🔍 [MATCH] findMatch called for ${user.userId} (gender=${user.gender}, prefGender=${user.prefGender}, country=${user.country}, filter=${user.filterType})`);
+      console.log(`🔍 [MATCH] findMatch called for ${user.userId} (gender=${user.gender}, prefGender=${user.prefGender}, country=${user.country})`);
     
-    // We expect the caller (sockets/index.ts) to have already cleared any stale locks
-    // and informed partners if this user was previously in a match.
-    // If they are still busy here, it means they shouldn't be matched yet.
-    const isBusy = await redis.exists(`user:busy:${user.userId}`);
-    if (isBusy) {
-      console.log(`🔍 [MATCH] ${user.userId} is BUSY, skipping`);
+      const isBusy = await redis.exists(`user:busy:${user.userId}`);
+      if (isBusy) {
+        console.log(`🔍 [MATCH] ${user.userId} is BUSY, skipping`);
+        return null;
+      }
+      await this.saveUserState(user);
+
+      // Step 1: Collect ALL candidates from global queue
+      const globalQueue = await redis.smembers('queue:global');
+      const allCandidateIds = new Set(globalQueue);
+
+      // Remove self from candidates
+      allCandidateIds.delete(user.userId);
+      console.log(`🔍 [MATCH] Candidates in global queue: ${allCandidateIds.size}`);
+
+      // Step 2: Score candidates
+      let bestCandidate: { state: UserState; score: number; name: string } | null = null;
+      const candidateArray = Array.from(allCandidateIds).slice(0, 50);
+
+      for (const candidateId of candidateArray) {
+        // Skip busy candidates
+        const isCandidateBusy = await redis.exists(`user:busy:${candidateId}`);
+        if (isCandidateBusy) {
+          continue;
+        }
+
+        const candidate = await this.getUserState(candidateId);
+        if (!candidate) {
+          // Stale entry, cleanup
+          await redis.srem('queue:global', candidateId);
+          continue;
+        }
+
+        const score = this.scoreMatch(user, candidate);
+        console.log(`🔍 [MATCH] Candidate ${candidateId}: score=${score} (gender=${candidate.gender}, age=${candidate.age})`);
+
+        if (!bestCandidate || score > bestCandidate.score) {
+          bestCandidate = { state: candidate, score, name: 'Stranger' };
+        }
+      }
+
+      // Step 3: If candidate found, match!
+      if (bestCandidate) {
+        console.log(`🔍 [MATCH] Matching ${user.userId} <-> ${bestCandidate.state.userId} with score ${bestCandidate.score}`);
+
+        const lockSelf = await redis.set(`user:busy:${user.userId}`, '1', 'EX', 30, 'NX');
+        const lockPartner = await redis.set(`user:busy:${bestCandidate.state.userId}`, '1', 'EX', 30, 'NX');
+
+        if (lockSelf && lockPartner) {
+          console.log(`✅ [MATCH] MATCH SUCCESS! ${user.userId} <-> ${bestCandidate.state.userId}`);
+
+          // Remove both from queue
+          await this.removeUser(user.userId, user.gender, user.country);
+          await this.removeUser(bestCandidate.state.userId, bestCandidate.state.gender, bestCandidate.state.country);
+
+          const channelName = `call_${crypto.randomBytes(8).toString('hex')}`;
+          const token = generateAgoraToken(channelName, 0);
+
+          return {
+            channelName,
+            token,
+            partner: {
+              userId: bestCandidate.state.userId,
+              socketId: bestCandidate.state.socketId,
+              name: bestCandidate.name,
+              gender: bestCandidate.state.gender,
+              age: bestCandidate.state.age,
+              country: bestCandidate.state.country
+            }
+          };
+        } else {
+          console.log(`🔍 [MATCH] Lock failed, releasing locks`);
+          await redis.del(`user:busy:${user.userId}`);
+          await redis.del(`user:busy:${bestCandidate.state.userId}`);
+        }
+      }
+
+      // Step 4: No match found — add self to global queue
+      console.log(`🔍 [MATCH] No match available. Adding ${user.userId} to global queue.`);
+      await redis.sadd('queue:global', user.userId);
       return null;
-    }
-    await this.saveUserState(user);
-
-    // ────────────────────────────────────────────
-    // Step 1: Collect ALL candidates (both genders)
-    // ────────────────────────────────────────────
-    const allCandidateIds = new Set<string>();
-
-    if (user.filterType === 'country') {
-      for (const gender of ['Male', 'Female']) {
-        const setKey = `queue:country:${user.country}:${gender}`;
-        const members = await redis.smembers(setKey);
-        console.log(`🔍 [MATCH] Queue "${setKey}": [${members.join(', ')}]`);
-        members.forEach(m => allCandidateIds.add(m));
-      }
-    } else {
-      for (const gender of ['Male', 'Female']) {
-        const geoKey = `queue:geo:${gender}`;
-        const members = await redis.georadius(
-          geoKey, user.longitude, user.latitude, user.kmRadius, 'km'
-        ) as string[];
-        console.log(`🔍 [MATCH] Geo "${geoKey}": ${members.length} nearby`);
-        members.forEach(m => allCandidateIds.add(m));
-      }
-    }
-
-    // Remove self from candidates
-    allCandidateIds.delete(user.userId);
-    console.log(`🔍 [MATCH] Total candidates (excluding self): ${allCandidateIds.size} -> [${[...allCandidateIds].join(', ')}]`);
-
-    // ────────────────────────────────────────────
-    // Step 2: Score each candidate
-    // ────────────────────────────────────────────
-    let bestCandidate: { state: UserState; score: number; name: string } | null = null;
-
-    for (const candidateId of allCandidateIds) {
-      // Skip busy candidates (already in a call)
-      const isCandidateBusy = await redis.exists(`user:busy:${candidateId}`);
-      if (isCandidateBusy) {
-        console.log(`🔍 [MATCH] Candidate ${candidateId} is BUSY, skipping`);
-        continue;
-      }
-
-      const candidate = await this.getUserState(candidateId);
-      if (!candidate) {
-        console.log(`🔍 [MATCH] Candidate ${candidateId} has no state, skipping`);
-        continue;
-      }
-
-      // Filter type must match (country users match country, geo matches geo)
-      if (candidate.filterType !== user.filterType) {
-        console.log(`🔍 [MATCH] Candidate ${candidateId} filterType mismatch (${candidate.filterType} vs ${user.filterType}), skipping`);
-        continue;
-      }
-
-      const score = this.scoreMatch(user, candidate);
-      console.log(`🔍 [MATCH] Candidate ${candidateId}: score=${score} (gender=${candidate.gender}, pref=${candidate.prefGender}, age=${candidate.age})`);
-
-      if (!bestCandidate || score > bestCandidate.score) {
-        bestCandidate = { state: candidate, score, name: 'Stranger' };
-      }
-    }
-
-    // ────────────────────────────────────────────
-    // Step 3: If best candidate found, lock & match
-    // ────────────────────────────────────────────
-    if (bestCandidate) {
-      console.log(`🔍 [MATCH] Best candidate: ${bestCandidate.state.userId} with score ${bestCandidate.score}`);
-
-      // Atomic lock both users to prevent double-matching
-      const lockSelf = await redis.set(`user:busy:${user.userId}`, '1', 'EX', 30, 'NX');
-      const lockPartner = await redis.set(`user:busy:${bestCandidate.state.userId}`, '1', 'EX', 30, 'NX');
-
-      if (lockSelf && lockPartner) {
-        console.log(`✅ [MATCH] MATCH SUCCESS! ${user.userId} <-> ${bestCandidate.state.userId} (score=${bestCandidate.score})`);
-
-        // Remove both from all queues
-        await this.removeUser(user.userId, user.gender, user.country);
-        await this.removeUser(bestCandidate.state.userId, bestCandidate.state.gender, bestCandidate.state.country);
-
-        // Generate Agora channel + token
-        const channelName = `call_${crypto.randomBytes(8).toString('hex')}`;
-        const token = generateAgoraToken(channelName, 0);
-
-        return {
-          channelName,
-          token,
-          partner: {
-            userId: bestCandidate.state.userId,
-            socketId: bestCandidate.state.socketId,
-            name: bestCandidate.name,
-            gender: bestCandidate.state.gender,
-            age: bestCandidate.state.age,
-            country: bestCandidate.state.country
-          }
-        };
-      } else {
-        // Lock race condition — release and retry next cycle
-        console.log(`🔍 [MATCH] Lock failed for ${user.userId} <-> ${bestCandidate.state.userId}, releasing`);
-        await redis.del(`user:busy:${user.userId}`);
-        await redis.del(`user:busy:${bestCandidate.state.userId}`);
-      }
-    }
-
-    // ────────────────────────────────────────────
-    // Step 4: No match found — add self to queue
-    // ────────────────────────────────────────────
-    console.log(`🔍 [MATCH] No match available for ${user.userId}. Adding to queue and waiting.`);
-
-    if (user.filterType === 'country') {
-      const setKey = `queue:country:${user.country}:${user.gender}`;
-      await redis.sadd(setKey, user.userId);
-      await redis.expire(setKey, 300);
-      console.log(`🔍 [MATCH] Added ${user.userId} to ${setKey}`);
-    } else {
-      const geoKey = `queue:geo:${user.gender}`;
-      await redis.geoadd(geoKey, user.longitude, user.latitude, user.userId);
-      await redis.expire(geoKey, 300);
-      console.log(`🔍 [MATCH] Added ${user.userId} to ${geoKey}`);
-    }
-
-    return null;
     } finally {
       unlock();
     }

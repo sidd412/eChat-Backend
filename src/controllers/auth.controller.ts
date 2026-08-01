@@ -214,7 +214,10 @@ export const updateProfile = async (request: FastifyRequest, reply: FastifyReply
         
         const isLocal = request.headers.host && (request.headers.host.includes('localhost') || request.headers.host.includes('127.0.0.1') || request.headers.host.includes('192.168.'));
         const protocol = isLocal ? 'http' : 'https';
-        const baseUrl = process.env.BASE_URL || `${protocol}://${request.headers.host}`;
+        let baseUrl = process.env.BASE_URL || `${protocol}://${request.headers.host}`;
+        if (baseUrl.startsWith('http://') && !isLocal) {
+          baseUrl = baseUrl.replace('http://', 'https://');
+        }
         user.avatar = `${baseUrl}/uploads/${filename}`;
       }
     } else if (avatar) {

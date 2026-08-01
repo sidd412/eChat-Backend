@@ -4,4 +4,5 @@ import { verifyJWT } from '../middlewares/auth.middleware';
 
 export default async function requestRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preHandler: [verifyJWT] }, createRequest);
+  fastify.post('', { preHandler: [verifyJWT] }, createRequest);
 }

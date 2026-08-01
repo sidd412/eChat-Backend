@@ -194,6 +194,21 @@ export const updateProfile = async (request: FastifyRequest, reply: FastifyReply
         if (!fs.existsSync(uploadsDir)) {
           fs.mkdirSync(uploadsDir, { recursive: true });
         }
+
+        // Delete old avatar from disk if it was hosted locally
+        if (user.avatar && user.avatar.includes('/uploads/')) {
+          const oldFilename = user.avatar.split('/uploads/')[1];
+          if (oldFilename) {
+            const oldFilePath = path.join(uploadsDir, oldFilename);
+            if (fs.existsSync(oldFilePath)) {
+              try {
+                fs.unlinkSync(oldFilePath);
+              } catch (err) {
+                // Ignore or log error
+              }
+            }
+          }
+        }
         
         fs.writeFileSync(path.join(uploadsDir, filename), buffer);
         

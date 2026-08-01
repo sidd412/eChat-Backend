@@ -1,6 +1,8 @@
 import fastify from 'fastify';
 import { connectDB } from './config/db';
 import './config/firebase'; // Initialize Firebase Admin
+import fs from 'fs';
+import path from 'path';
 import dotenv from 'dotenv';
 import { Server } from 'socket.io';
 import authRoutes from './routes/auth.routes';
@@ -8,12 +10,14 @@ import chatRoutes from './routes/chat.routes';
 import consentRoutes from './routes/consent.routes';
 import blockRoutes from './routes/block.routes';
 import paymentRoutes from './routes/payment.routes';
+import requestRoutes from './routes/request.routes';
 import { initSockets } from './sockets';
 
 // Load environment variables
 dotenv.config();
 
 const server = fastify({
+  bodyLimit: 10485760, // 10MB limit
   logger: {
     transport: {
       target: 'pino-pretty',
@@ -41,6 +45,7 @@ server.register(chatRoutes, { prefix: '/api/chat' });
 server.register(consentRoutes, { prefix: '/api/consent' });
 server.register(blockRoutes, { prefix: '/api/block' });
 server.register(paymentRoutes, { prefix: '/api/payment' });
+server.register(requestRoutes, { prefix: '/api/requests' });
 
 // Global Error Handler
 server.setErrorHandler((error, _request, reply) => {
@@ -55,6 +60,19 @@ server.setErrorHandler((error, _request, reply) => {
 server.get('/health', async () => {
   return { status: 'OK', uptime: process.uptime() };
 });
+
+// Serve uploaded profile avatar images
+server.get('/uploads/:filename', async (request, reply) => {
+  const { filename } = request.params as any;
+  const filePath = path.join(process.cwd(), 'uploads', filename);
+  if (fs.existsSync(filePath)) {
+    const stream = fs.createReadStream(filePath);
+    return reply.type('image/jpeg').send(stream);
+  } else {
+    return reply.status(404).send({ error: 'File not found' });
+  }
+});
+
 
 const start = async () => {
   try {

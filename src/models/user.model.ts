@@ -7,6 +7,9 @@ export interface IUser extends Document {
   avatar?: string;
   gender?: string;
   age?: number;
+  dob?: string;
+  bio?: string;
+  contactNumber?: string;
   location?: {
     type: 'Point';
     coordinates: [number, number]; // [longitude, latitude]
@@ -35,6 +38,9 @@ const UserSchema = new Schema<IUser>(
     avatar: { type: String, default: '' },
     gender: { type: String, enum: ['Male', 'Female', 'Other', 'Not Specified'], default: 'Not Specified' },
     age: { type: Number },
+    dob: { type: String },
+    bio: { type: String, default: '' },
+    contactNumber: { type: String },
     location: {
       type: {
         type: String,

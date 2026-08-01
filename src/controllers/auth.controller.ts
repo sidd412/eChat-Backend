@@ -5,6 +5,8 @@ import { User } from '../models/user.model';
 import { Interaction } from '../models/interaction.model';
 import { Message } from '../models/message.model';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -154,6 +156,10 @@ export const updateProfile = async (request: FastifyRequest, reply: FastifyReply
       name,
       gender,
       age,
+      dob,
+      bio,
+      contactNumber,
+      avatar,
       country,
       longitude,
       latitude,
@@ -172,6 +178,33 @@ export const updateProfile = async (request: FastifyRequest, reply: FastifyReply
     if (name) user.name = name;
     if (gender) user.gender = gender;
     if (age !== undefined) user.age = Number(age);
+    if (dob) user.dob = dob;
+    if (bio !== undefined) user.bio = bio;
+    if (contactNumber !== undefined) user.contactNumber = contactNumber;
+    if (avatar && avatar.startsWith('data:image')) {
+      const parts = avatar.split(';base64,');
+      if (parts.length === 2) {
+        const header = parts[0];
+        const data = parts[1];
+        const ext = header.split('/')[1] || 'jpg';
+        const buffer = Buffer.from(data, 'base64');
+        const filename = `${user.userId}_${Date.now()}.${ext === 'jpeg' ? 'jpg' : ext}`;
+        
+        const uploadsDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        
+        fs.writeFileSync(path.join(uploadsDir, filename), buffer);
+        
+        const isLocal = request.headers.host && (request.headers.host.includes('localhost') || request.headers.host.includes('127.0.0.1') || request.headers.host.includes('192.168.'));
+        const protocol = isLocal ? 'http' : 'https';
+        const baseUrl = process.env.BASE_URL || `${protocol}://${request.headers.host}`;
+        user.avatar = `${baseUrl}/uploads/${filename}`;
+      }
+    } else if (avatar) {
+      user.avatar = avatar;
+    }
     if (country) user.country = country;
 
     if (longitude !== undefined && latitude !== undefined) {

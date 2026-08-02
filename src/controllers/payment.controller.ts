@@ -14,6 +14,7 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
 
     const JUSPAY_MERCHANT_ID = process.env.JUSPAY_MERCHANT_ID || 'echat9129054029';
     const JUSPAY_API_KEY = process.env.JUSPAY_API_KEY || '';
+    const JUSPAY_BASE_URL = process.env.JUSPAY_BASE_URL || 'https://sandbox.juspay.in';
 
     // Generate unique order ID
     const orderId = `order_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
@@ -39,12 +40,12 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
       customer_phone: '9999999999',
       payment_page_client_id: JUSPAY_MERCHANT_ID,
       action: 'paymentPage',
-      return_url: 'https://sandbox.juspay.in/end'
+      return_url: `${JUSPAY_BASE_URL}/end`
     };
 
     console.log('📦 Creating Juspay session with payload:', juspayPayload);
 
-    const response = await fetch('https://sandbox.juspay.in/session', {
+    const response = await fetch(`${JUSPAY_BASE_URL}/session`, {
       method: 'POST',
       headers: {
         'Authorization': authHeader,
@@ -154,10 +155,11 @@ export const verifyOrder = async (request: FastifyRequest, reply: FastifyReply) 
 
     const JUSPAY_MERCHANT_ID = process.env.JUSPAY_MERCHANT_ID || 'echat9129054029';
     const JUSPAY_API_KEY = process.env.JUSPAY_API_KEY || '';
+    const JUSPAY_BASE_URL = process.env.JUSPAY_BASE_URL || 'https://sandbox.juspay.in';
     const authHeader = 'Basic ' + Buffer.from(JUSPAY_API_KEY + ':').toString('base64');
 
     // Fetch order status from Juspay API
-    const response = await fetch(`https://sandbox.juspay.in/orders/${orderId}`, {
+    const response = await fetch(`${JUSPAY_BASE_URL}/orders/${orderId}`, {
       method: 'GET',
       headers: {
         'Authorization': authHeader,

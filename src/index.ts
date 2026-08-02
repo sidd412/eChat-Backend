@@ -18,6 +18,7 @@ dotenv.config();
 
 const server = fastify({
   bodyLimit: 10485760, // 10MB limit
+  ignoreTrailingSlash: true,
   logger: {
     transport: {
       target: 'pino-pretty',

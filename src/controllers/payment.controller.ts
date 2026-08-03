@@ -58,6 +58,18 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
       return reply.code(400).send({ message: 'Amount and coins are required' });
     }
 
+    // Fetch actual user details for clean contact/email info
+    const dbUser = await User.findOne({ userId: requester.userId });
+    const userEmail = dbUser?.email || 'test@echat.com';
+    let userContact = dbUser?.contactNumber || '9999999999';
+    // Clean to standard 10 digit number
+    userContact = userContact.replace(/\D/g, '');
+    if (userContact.length > 10) {
+      userContact = userContact.substring(userContact.length - 10);
+    } else if (userContact.length < 10) {
+      userContact = '9999999999';
+    }
+
     const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_TLJZq2x1feNNW0';
     const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'rofnnDQPweOfW1GHVK045fGJ';
 
@@ -84,9 +96,9 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
       reference_id: orderId,
       description: `Recharge for ${coins} coins`,
       customer: {
-        name: requester.name || 'User',
-        email: requester.email || 'test@echat.com',
-        contact: requester.contactNumber || '9999999999'
+        name: dbUser?.name || requester.name || 'User',
+        email: userEmail,
+        contact: userContact
       },
       notify: {
         sms: false,
@@ -126,9 +138,9 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
       orderId,
       paymentLink: data.short_url
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create Order Error:', error);
-    return reply.code(500).send({ message: 'Failed to create order' });
+    return reply.code(500).send({ message: 'Failed to create order', error: error.message || String(error) });
   }
 };
 

@@ -73,49 +73,24 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
     const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_TLJZq2x1feNNW0';
     const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'rofnnDQPweOfW1GHVK045fGJ';
 
-    // Generate unique order ID
+    // Generate unique local receipt order ID
     const orderId = `order_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
-    // Create pending transaction in DB
-    const transaction = new Transaction({
-      userId: requester.userId,
-      orderId,
-      amount,
-      coins,
-      status: 'PENDING'
-    });
-    await transaction.save();
-    
-    // Call Razorpay Payment Links API via Basic Auth
     const authHeader = 'Basic ' + Buffer.from(RAZORPAY_KEY_ID + ':' + RAZORPAY_KEY_SECRET).toString('base64');
     
+    // Create standard Razorpay Order
     const razorpayPayload = {
       amount: Math.round(amount * 100), // Amount in paise
       currency: 'INR',
-      accept_partial: false,
-      reference_id: orderId,
-      description: `Recharge for ${coins} coins`,
-      customer: {
-        name: dbUser?.name || requester.name || 'User',
-        email: userEmail,
-        contact: userContact
-      },
-      notify: {
-        sms: false,
-        email: false
-      },
-      reminder_enable: false,
+      receipt: orderId,
       notes: {
-        orderId,
         coins: String(coins)
-      },
-      callback_url: 'https://razorpay.com/payment-complete',
-      callback_method: 'get'
+      }
     };
 
-    console.log('📦 Creating Razorpay payment link with payload:', razorpayPayload);
+    console.log('📦 Creating Razorpay Order with payload:', razorpayPayload);
 
-    const response = await httpsRequest('https://api.razorpay.com/v1/payment_links', {
+    const response = await httpsRequest('https://api.razorpay.com/v1/orders', {
       method: 'POST',
       headers: {
         'Authorization': authHeader,
@@ -128,15 +103,47 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
 
     if (!response.ok) {
       console.error('Razorpay API Error:', data);
-      return reply.code(500).send({ message: 'Failed to create Razorpay payment link', details: data });
+      return reply.code(500).send({ message: 'Failed to create Razorpay Order', details: data });
     }
 
-    console.log('✅ Razorpay payment link created:', data.short_url);
+    console.log('✅ Razorpay Order created:', data.id);
+
+    // Create pending transaction in DB, storing Razorpay Order ID
+    const transaction = new Transaction({
+      userId: requester.userId,
+      orderId,
+      amount,
+      coins,
+      status: 'PENDING',
+      gatewayResponse: {
+        razorpayOrderId: data.id
+      }
+    });
+    await transaction.save();
+
+    // Compile dynamic payload needed for Android Native SDK Checkout
+    const sdkPayload = {
+      key: RAZORPAY_KEY_ID,
+      amount: data.amount,
+      currency: 'INR',
+      name: 'Talksy',
+      description: `Purchase ${coins} coins`,
+      image: 'https://s3.amazonaws.com/rzp-mobile/images/rzp.png',
+      order_id: data.id,
+      prefill: {
+        name: dbUser?.name || requester.name || 'User',
+        email: userEmail,
+        contact: userContact
+      },
+      theme: {
+        color: '#6200EE'
+      }
+    };
 
     return reply.code(200).send({
       success: true,
       orderId,
-      paymentLink: data.short_url
+      sdkPayload
     });
   } catch (error: any) {
     console.error('Create Order Error:', error);
@@ -149,15 +156,15 @@ export const juspayWebhook = async (request: FastifyRequest, reply: FastifyReply
     const body = request.body as any;
     console.log('📨 Razorpay Webhook Payload:', JSON.stringify(body, null, 2));
 
-    // Handle payment_link.paid event
-    if (body.event === 'payment_link.paid') {
-      const paymentLinkObj = body.payload?.payment_link?.entity;
-      if (!paymentLinkObj) {
+    // Handle order.paid event
+    if (body.event === 'order.paid') {
+      const orderObj = body.payload?.order?.entity;
+      if (!orderObj) {
         return reply.code(400).send({ message: 'Invalid webhook payload structure' });
       }
 
-      const orderId = paymentLinkObj.reference_id;
-      const status = paymentLinkObj.status;
+      const orderId = orderObj.receipt; // matches our local orderId
+      const status = orderObj.status;
 
       if (status === 'paid' && orderId) {
         const transaction = await Transaction.findOne({ orderId });
@@ -207,12 +214,17 @@ export const verifyOrder = async (request: FastifyRequest, reply: FastifyReply) 
       return reply.code(200).send({ success: true, message: 'Already verified' });
     }
 
+    const razorpayOrderId = transaction.gatewayResponse?.razorpayOrderId;
+    if (!razorpayOrderId) {
+      return reply.code(400).send({ message: 'Razorpay Order ID not found on transaction record' });
+    }
+
     const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_TLJZq2x1feNNW0';
     const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'rofnnDQPweOfW1GHVK045fGJ';
     const authHeader = 'Basic ' + Buffer.from(RAZORPAY_KEY_ID + ':' + RAZORPAY_KEY_SECRET).toString('base64');
 
-    // Retrieve status from Razorpay using the reference_id filter
-    const response = await httpsRequest(`https://api.razorpay.com/v1/payment_links?reference_id=${orderId}`, {
+    // Retrieve order status from Razorpay
+    const response = await httpsRequest(`https://api.razorpay.com/v1/orders/${razorpayOrderId}`, {
       method: 'GET',
       headers: {
         'Authorization': authHeader
@@ -226,13 +238,8 @@ export const verifyOrder = async (request: FastifyRequest, reply: FastifyReply) 
       return reply.code(500).send({ message: 'Failed to verify order with Razorpay' });
     }
 
-    const paymentLinkObj = data.items?.[0];
-    if (!paymentLinkObj) {
-      return reply.code(404).send({ message: 'Payment link not found in Razorpay' });
-    }
-
-    const status = paymentLinkObj.status; // 'created', 'partially_paid', 'paid', 'expired', 'cancelled'
-    transaction.gatewayResponse = paymentLinkObj;
+    const status = data.status; // 'created', 'attempted', 'paid'
+    transaction.gatewayResponse = data;
 
     if (status === 'paid') {
       transaction.status = 'SUCCESS';
@@ -244,10 +251,6 @@ export const verifyOrder = async (request: FastifyRequest, reply: FastifyReply) 
         await user.save();
       }
       return reply.code(200).send({ success: true, status: 'SUCCESS' });
-    } else if (status === 'expired' || status === 'cancelled') {
-      transaction.status = 'FAILED';
-      await transaction.save();
-      return reply.code(200).send({ success: false, status: transaction.status });
     } else {
       return reply.code(200).send({ success: false, status: 'PENDING' });
     }

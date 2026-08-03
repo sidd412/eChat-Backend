@@ -61,13 +61,13 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
     // Fetch actual user details for clean contact/email info
     const dbUser = await User.findOne({ userId: requester.userId });
     const userEmail = dbUser?.email || 'test@echat.com';
-    let userContact = dbUser?.contactNumber || '9999999999';
+    let userContact = dbUser?.contactNumber || '9123456789';
     // Clean to standard 10 digit number
     userContact = userContact.replace(/\D/g, '');
     if (userContact.length > 10) {
       userContact = userContact.substring(userContact.length - 10);
     } else if (userContact.length < 10) {
-      userContact = '9999999999';
+      userContact = '9123456789';
     }
 
     const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_TLJZq2x1feNNW0';

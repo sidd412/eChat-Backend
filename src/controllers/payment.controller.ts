@@ -12,9 +12,8 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
       return reply.code(400).send({ message: 'Amount and coins are required' });
     }
 
-    const JUSPAY_MERCHANT_ID = process.env.JUSPAY_MERCHANT_ID || 'echat9129054029';
-    const JUSPAY_API_KEY = process.env.JUSPAY_API_KEY || '';
-    const JUSPAY_BASE_URL = process.env.JUSPAY_BASE_URL || 'https://sandbox.juspay.in';
+    const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_TLJZq2x1feNNW0';
+    const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'rofnnDQPweOfW1GHVK045fGJ';
 
     // Generate unique order ID
     const orderId = `order_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
@@ -29,49 +28,57 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
     });
     await transaction.save();
     
-    // Call real Juspay Session API
-    const authHeader = 'Basic ' + Buffer.from(JUSPAY_API_KEY + ':').toString('base64');
+    // Call Razorpay Payment Links API via Basic Auth fetch
+    const authHeader = 'Basic ' + Buffer.from(RAZORPAY_KEY_ID + ':' + RAZORPAY_KEY_SECRET).toString('base64');
     
-    const juspayPayload = {
-      order_id: orderId,
-      amount: amount.toFixed(2),
-      customer_id: requester.userId,
-      customer_email: 'test@echat.com',
-      customer_phone: '9999999999',
-      payment_page_client_id: JUSPAY_MERCHANT_ID,
-      action: 'paymentPage',
-      return_url: `${JUSPAY_BASE_URL}/end`
+    const razorpayPayload = {
+      amount: Math.round(amount * 100), // Amount in paise
+      currency: 'INR',
+      accept_partial: false,
+      reference_id: orderId,
+      description: `Recharge for ${coins} coins`,
+      customer: {
+        name: requester.name || 'User',
+        email: requester.email || 'test@echat.com',
+        contact: requester.contactNumber || '9999999999'
+      },
+      notify: {
+        sms: false,
+        email: false
+      },
+      reminder_enable: false,
+      notes: {
+        orderId,
+        coins: String(coins)
+      },
+      callback_url: 'https://razorpay.com/payment-complete',
+      callback_method: 'get'
     };
 
-    console.log('📦 Creating Juspay session with payload:', juspayPayload);
+    console.log('📦 Creating Razorpay payment link with payload:', razorpayPayload);
 
-    const response = await fetch(`${JUSPAY_BASE_URL}/session`, {
+    const response = await fetch('https://api.razorpay.com/v1/payment_links', {
       method: 'POST',
       headers: {
         'Authorization': authHeader,
-        'Content-Type': 'application/json',
-        'x-merchantid': JUSPAY_MERCHANT_ID
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(juspayPayload)
+      body: JSON.stringify(razorpayPayload)
     });
 
     const data = await response.json() as any;
 
     if (!response.ok) {
-      console.error('Juspay API Error:', data);
-      return reply.code(500).send({ message: 'Failed to create Juspay session', details: data });
+      console.error('Razorpay API Error:', data);
+      return reply.code(500).send({ message: 'Failed to create Razorpay payment link', details: data });
     }
 
-    console.log('✅ Juspay session created:', JSON.stringify(data, null, 2));
-
-    // Return the payment link for WebView-based flow
-    const paymentLink = data.payment_links?.web || data.payment_links?.mobile;
+    console.log('✅ Razorpay payment link created:', data.short_url);
 
     return reply.code(200).send({
       success: true,
       orderId,
-      paymentLink,
-      sdkPayload: data.sdk_payload
+      paymentLink: data.short_url
     });
   } catch (error) {
     console.error('Create Order Error:', error);
@@ -81,51 +88,40 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
 
 export const juspayWebhook = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
-    // In real implementation, verify webhook signature via request headers
-    // const signature = request.headers['x-juspay-signature'];
-    
     const body = request.body as any;
-    
-    // Juspay wraps webhook details in `content.order`
-    const eventName = body.event_name;
-    const orderData = body.content?.order || body;
+    console.log('📨 Razorpay Webhook Payload:', JSON.stringify(body, null, 2));
 
-    const orderId = orderData.order_id || orderData.orderId;
-    const status = orderData.status;
-
-    if (!orderId || !status) {
-      return reply.code(400).send({ message: 'Invalid webhook payload' });
-    }
-
-    const transaction = await Transaction.findOne({ orderId });
-    if (!transaction) {
-      return reply.code(404).send({ message: 'Transaction not found' });
-    }
-
-    if (transaction.status === 'SUCCESS') {
-      return reply.code(200).send({ message: 'Already processed' });
-    }
-
-    transaction.gatewayResponse = body;
-
-    // Assuming 'CHARGED' or 'SUCCESS' means payment went through
-    if (status === 'CHARGED' || status === 'SUCCESS' || eventName === 'ORDER_SUCCEEDED') {
-      transaction.status = 'SUCCESS';
-      await transaction.save();
-
-      // Add coins to user wallet
-      const user = await User.findOne({ userId: transaction.userId });
-      if (user) {
-        user.coinsBalance += transaction.coins;
-        await user.save();
-        
-        // Notify socket via redis pub/sub or emit event directly if in same process
-        // For simplicity, assuming io is available globally or we emit via redis in the future.
-        console.log(`💰 Added ${transaction.coins} coins to ${user.userId}. New Balance: ${user.coinsBalance}`);
+    // Handle payment_link.paid event
+    if (body.event === 'payment_link.paid') {
+      const paymentLinkObj = body.payload?.payment_link?.entity;
+      if (!paymentLinkObj) {
+        return reply.code(400).send({ message: 'Invalid webhook payload structure' });
       }
-    } else {
-      transaction.status = 'FAILED';
-      await transaction.save();
+
+      const orderId = paymentLinkObj.reference_id;
+      const status = paymentLinkObj.status;
+
+      if (status === 'paid' && orderId) {
+        const transaction = await Transaction.findOne({ orderId });
+        if (!transaction) {
+          return reply.code(404).send({ message: 'Transaction not found' });
+        }
+
+        if (transaction.status === 'SUCCESS') {
+          return reply.code(200).send({ message: 'Already processed' });
+        }
+
+        transaction.status = 'SUCCESS';
+        transaction.gatewayResponse = body;
+        await transaction.save();
+
+        const user = await User.findOne({ userId: transaction.userId });
+        if (user) {
+          user.coinsBalance += transaction.coins;
+          await user.save();
+          console.log(`💰 Added ${transaction.coins} coins to ${user.userId}. New Balance: ${user.coinsBalance}`);
+        }
+      }
     }
 
     return reply.code(200).send({ success: true });
@@ -153,17 +149,15 @@ export const verifyOrder = async (request: FastifyRequest, reply: FastifyReply) 
       return reply.code(200).send({ success: true, message: 'Already verified' });
     }
 
-    const JUSPAY_MERCHANT_ID = process.env.JUSPAY_MERCHANT_ID || 'echat9129054029';
-    const JUSPAY_API_KEY = process.env.JUSPAY_API_KEY || '';
-    const JUSPAY_BASE_URL = process.env.JUSPAY_BASE_URL || 'https://sandbox.juspay.in';
-    const authHeader = 'Basic ' + Buffer.from(JUSPAY_API_KEY + ':').toString('base64');
+    const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_TLJZq2x1feNNW0';
+    const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'rofnnDQPweOfW1GHVK045fGJ';
+    const authHeader = 'Basic ' + Buffer.from(RAZORPAY_KEY_ID + ':' + RAZORPAY_KEY_SECRET).toString('base64');
 
-    // Fetch order status from Juspay API
-    const response = await fetch(`${JUSPAY_BASE_URL}/orders/${orderId}`, {
+    // Retrieve status from Razorpay using the reference_id filter
+    const response = await fetch(`https://api.razorpay.com/v1/payment_links?reference_id=${orderId}`, {
       method: 'GET',
       headers: {
-        'Authorization': authHeader,
-        'x-merchantid': JUSPAY_MERCHANT_ID
+        'Authorization': authHeader
       }
     });
 
@@ -171,13 +165,18 @@ export const verifyOrder = async (request: FastifyRequest, reply: FastifyReply) 
 
     if (!response.ok) {
       console.error('Verify Order Error:', data);
-      return reply.code(500).send({ message: 'Failed to verify order with Juspay' });
+      return reply.code(500).send({ message: 'Failed to verify order with Razorpay' });
     }
 
-    const status = data.status;
-    transaction.gatewayResponse = data;
+    const paymentLinkObj = data.items?.[0];
+    if (!paymentLinkObj) {
+      return reply.code(404).send({ message: 'Payment link not found in Razorpay' });
+    }
 
-    if (status === 'CHARGED' || status === 'SUCCESS') {
+    const status = paymentLinkObj.status; // 'created', 'partially_paid', 'paid', 'expired', 'cancelled'
+    transaction.gatewayResponse = paymentLinkObj;
+
+    if (status === 'paid') {
       transaction.status = 'SUCCESS';
       await transaction.save();
 
@@ -187,10 +186,12 @@ export const verifyOrder = async (request: FastifyRequest, reply: FastifyReply) 
         await user.save();
       }
       return reply.code(200).send({ success: true, status: 'SUCCESS' });
-    } else {
+    } else if (status === 'expired' || status === 'cancelled') {
       transaction.status = 'FAILED';
       await transaction.save();
       return reply.code(200).send({ success: false, status: transaction.status });
+    } else {
+      return reply.code(200).send({ success: false, status: 'PENDING' });
     }
   } catch (error) {
     console.error('Verify Order Error:', error);

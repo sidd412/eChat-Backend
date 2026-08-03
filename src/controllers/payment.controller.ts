@@ -2,6 +2,52 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { Transaction } from '../models/transaction.model';
 import { User } from '../models/user.model';
 import crypto from 'crypto';
+import https from 'https';
+
+// Helper function to perform secure HTTPS requests compatible with all Node.js versions
+function httpsRequest(url: string, options: { method: string; headers: any; body?: string }): Promise<{ ok: boolean; status: number; body: any }> {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const reqOptions = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: options.method,
+      headers: options.headers
+    };
+
+    const req = https.request(reqOptions, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve({
+            ok: !!(res.statusCode && res.statusCode >= 200 && res.statusCode < 300),
+            status: res.statusCode || 200,
+            body: parsed
+          });
+        } catch (e) {
+          resolve({
+            ok: !!(res.statusCode && res.statusCode >= 200 && res.statusCode < 300),
+            status: res.statusCode || 200,
+            body: data
+          });
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    if (options.body) {
+      req.write(options.body);
+    }
+    req.end();
+  });
+}
 
 export const createOrder = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
@@ -28,7 +74,7 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
     });
     await transaction.save();
     
-    // Call Razorpay Payment Links API via Basic Auth fetch
+    // Call Razorpay Payment Links API via Basic Auth
     const authHeader = 'Basic ' + Buffer.from(RAZORPAY_KEY_ID + ':' + RAZORPAY_KEY_SECRET).toString('base64');
     
     const razorpayPayload = {
@@ -57,7 +103,7 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
 
     console.log('📦 Creating Razorpay payment link with payload:', razorpayPayload);
 
-    const response = await fetch('https://api.razorpay.com/v1/payment_links', {
+    const response = await httpsRequest('https://api.razorpay.com/v1/payment_links', {
       method: 'POST',
       headers: {
         'Authorization': authHeader,
@@ -66,7 +112,7 @@ export const createOrder = async (request: FastifyRequest, reply: FastifyReply) 
       body: JSON.stringify(razorpayPayload)
     });
 
-    const data = await response.json() as any;
+    const data = response.body;
 
     if (!response.ok) {
       console.error('Razorpay API Error:', data);
@@ -154,14 +200,14 @@ export const verifyOrder = async (request: FastifyRequest, reply: FastifyReply) 
     const authHeader = 'Basic ' + Buffer.from(RAZORPAY_KEY_ID + ':' + RAZORPAY_KEY_SECRET).toString('base64');
 
     // Retrieve status from Razorpay using the reference_id filter
-    const response = await fetch(`https://api.razorpay.com/v1/payment_links?reference_id=${orderId}`, {
+    const response = await httpsRequest(`https://api.razorpay.com/v1/payment_links?reference_id=${orderId}`, {
       method: 'GET',
       headers: {
         'Authorization': authHeader
       }
     });
 
-    const data = await response.json() as any;
+    const data = response.body;
 
     if (!response.ok) {
       console.error('Verify Order Error:', data);

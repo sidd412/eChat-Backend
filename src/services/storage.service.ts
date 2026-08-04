@@ -45,14 +45,8 @@ export async function uploadFile(filename: string, buffer: Buffer, contentType: 
       contentType,
       cacheControl: 'public, max-age=31536000',
     },
-    resumable: false,
-    public: true // Automatically sets predefinedAcl to publicRead if fine-grained is active
+    resumable: false
   });
-
-  // Try to make file public explicitly in case UBLA is not enforced
-  try {
-    await file.makePublic();
-  } catch (_) {}
 
   return `https://storage.googleapis.com/${bucketName}/${filename}`;
 }

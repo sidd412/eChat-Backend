@@ -4,7 +4,7 @@ export const privacyPolicyHtml = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>eChat - Privacy Policy</title>
+    <title>Talksy - Privacy Policy</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -57,7 +57,7 @@ export const privacyPolicyHtml = `
         <h1>Privacy Policy</h1>
         <div class="date">Last Updated: August 5, 2026</div>
         
-        <p>Welcome to <strong>eChat</strong>. We are committed to protecting your privacy and ensuring you have a safe and secure experience using our application. This Privacy Policy outlines the types of information we collect, how we process and protect it, and your rights regarding your data in full compliance with the Google Play Console Developer Policies.</p>
+        <p>Welcome to <strong>Talksy</strong>. We are committed to protecting your privacy and ensuring you have a safe and secure experience using our application. This Privacy Policy outlines the types of information we collect, how we process and protect it, and your rights regarding your data in full compliance with the Google Play Console Developer Policies.</p>
 
         <h2>1. Information We Collect</h2>
         <p>To provide and improve our real-time video matching and communication services, we collect the following categories of data:</p>
@@ -111,7 +111,7 @@ export const privacyPolicyHtml = `
         </ul>
 
         <h2>7. Android Device Permissions Required</h2>
-        <p>To enable the core features of the eChat application, the app requests the following runtime permissions on your mobile device:</p>
+        <p>To enable the core features of the Talksy application, the app requests the following runtime permissions on your mobile device:</p>
         <ul>
             <li><strong>Camera Permission (CAMERA)</strong>: Required to capture video streams during video call matches. Video frames are processed in real-time and are never saved on the device or servers.</li>
             <li><strong>Microphone Permission (RECORD_AUDIO)</strong>: Required to capture audio streams during voice/video chats. Audio is processed in real-time and is never recorded or stored.</li>

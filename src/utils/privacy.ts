@@ -104,7 +104,15 @@ export const privacyPolicyHtml = `
         <h2>6. Security Measures</h2>
         <p>All communication between the mobile app and our servers is encrypted using Secure Sockets Layer (SSL) and Transport Layer Security (TLS/HTTPS). Databases are hosted behind secure firewalls with restricted IAM roles.</p>
 
-        <h2>7. Contact Us</h2>
+        <h2>7. Android Device Permissions Required</h2>
+        <p>To enable the core features of the eChat application, the app requests the following runtime permissions on your mobile device:</p>
+        <ul>
+            <li><strong>Camera Permission (CAMERA)</strong>: Required to capture video streams during video call matches. Video frames are processed in real-time and are never saved on the device or servers.</li>
+            <li><strong>Microphone Permission (RECORD_AUDIO)</strong>: Required to capture audio streams during voice/video chats. Audio is processed in real-time and is never recorded or stored.</li>
+            <li><strong>Notification Permission (POST_NOTIFICATIONS)</strong>: Required to notify you of incoming call invitations and chat messages while the app is in the background.</li>
+        </ul>
+
+        <h2>8. Contact Us</h2>
         <p>If you have questions regarding this Privacy Policy, data security, GDPR/CCPA compliance, or account deletion, please contact our Privacy Office at:</p>
         <p>Email: <a href="mailto:shriramasociate17@gmail.com">shriramasociate17@gmail.com</a></p>
     </div>

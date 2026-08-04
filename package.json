@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.2",
+    "@google-cloud/storage": "^7.21.0",
     "agora-token": "^2.0.3",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.0",

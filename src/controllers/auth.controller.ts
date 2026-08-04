@@ -5,8 +5,7 @@ import { User } from '../models/user.model';
 import { Interaction } from '../models/interaction.model';
 import { Message } from '../models/message.model';
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
+import { uploadFile, deleteFile } from '../services/storage.service';
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -189,36 +188,16 @@ export const updateProfile = async (request: FastifyRequest, reply: FastifyReply
         const ext = header.split('/')[1] || 'jpg';
         const buffer = Buffer.from(data, 'base64');
         const filename = `${user.userId}_${Date.now()}.${ext === 'jpeg' ? 'jpg' : ext}`;
+        const contentType = header.split(':')[1] || 'image/jpeg';
         
-        const uploadsDir = path.join(process.cwd(), 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
+        // Delete old avatar from GCS if it exists
+        if (user.avatar) {
+          await deleteFile(user.avatar);
         }
 
-        // Delete old avatar from disk if it was hosted locally
-        if (user.avatar && user.avatar.includes('/uploads/')) {
-          const oldFilename = user.avatar.split('/uploads/')[1];
-          if (oldFilename) {
-            const oldFilePath = path.join(uploadsDir, oldFilename);
-            if (fs.existsSync(oldFilePath)) {
-              try {
-                fs.unlinkSync(oldFilePath);
-              } catch (err) {
-                // Ignore or log error
-              }
-            }
-          }
-        }
-        
-        fs.writeFileSync(path.join(uploadsDir, filename), buffer);
-        
-        const isLocal = request.headers.host && (request.headers.host.includes('localhost') || request.headers.host.includes('127.0.0.1') || request.headers.host.includes('192.168.'));
-        const protocol = isLocal ? 'http' : 'https';
-        let baseUrl = process.env.BASE_URL || `${protocol}://${request.headers.host}`;
-        if (baseUrl.startsWith('http://') && !isLocal) {
-          baseUrl = baseUrl.replace('http://', 'https://');
-        }
-        user.avatar = `${baseUrl}/uploads/${filename}`;
+        // Upload to Google Cloud Storage
+        const gcsUrl = await uploadFile(filename, buffer, contentType);
+        user.avatar = gcsUrl;
       }
     } else if (avatar) {
       user.avatar = avatar;

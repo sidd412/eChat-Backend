@@ -12,6 +12,7 @@ import blockRoutes from './routes/block.routes';
 import paymentRoutes from './routes/payment.routes';
 import requestRoutes from './routes/request.routes';
 import { initSockets } from './sockets';
+import { privacyPolicyHtml } from './utils/privacy';
 
 // Load environment variables
 dotenv.config();
@@ -60,6 +61,11 @@ server.setErrorHandler((error, _request, reply) => {
 // Health check endpoint
 server.get('/health', async () => {
   return { status: 'OK', uptime: process.uptime() };
+});
+
+// Privacy Policy endpoint (Google Play Store compliance)
+server.get('/privacy', async (_request, reply) => {
+  return reply.type('text/html').send(privacyPolicyHtml);
 });
 
 // Serve uploaded profile avatar images

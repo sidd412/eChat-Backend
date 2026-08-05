@@ -118,7 +118,15 @@ export const privacyPolicyHtml = `
             <li><strong>Notification Permission (POST_NOTIFICATIONS)</strong>: Required to notify you of incoming call invitations and chat messages while the app is in the background.</li>
         </ul>
 
-        <h2>8. Contact Us</h2>
+        <h2>8. Child Sexual Abuse Material (CSAM) & Exploitation (CSAE) Prevention Policy</h2>
+        <p>Talksy has a strict <strong>Zero-Tolerance Policy</strong> against the creation, distribution, sharing, or facilitation of Child Sexual Abuse Material (CSAM) and Child Sexual Abuse and Exploitation (CSAE). We employ multiple layers of defense to prevent and respond to child safety hazards:</p>
+        <ul>
+            <li><strong>Immediate Account Termination</strong>: Any user attempting to share, discuss, or request CSAM/CSAE content will be banned permanently from the platform instantly.</li>
+            <li><strong>Law Enforcement Reporting</strong>: We comply with national and international reporting requirements. All detected instances of CSAM/CSAE will be reported directly to the National Center for Missing & Exploited Children (NCMEC) and appropriate law enforcement agencies.</li>
+            <li><strong>In-App User Reporting</strong>: Every video matchmaking session and text chat contains a persistent "Report" button, allowing users to report child safety violations immediately. All reports are flagged with high priority for our safety moderation team.</li>
+        </ul>
+
+        <h2>9. Contact Us</h2>
         <p>If you have questions regarding this Privacy Policy, data security, GDPR/CCPA compliance, or account deletion, please contact our Privacy Office at:</p>
         <p>Email: <a href="mailto:shriramasociate17@gmail.com">shriramasociate17@gmail.com</a></p>
     </div>

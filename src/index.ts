@@ -13,6 +13,7 @@ import paymentRoutes from './routes/payment.routes';
 import requestRoutes from './routes/request.routes';
 import { initSockets } from './sockets';
 import { privacyPolicyHtml } from './utils/privacy';
+import { deleteAccountHtml } from './utils/deleteAccount';
 
 // Load environment variables
 dotenv.config();
@@ -66,6 +67,11 @@ server.get('/health', async () => {
 // Privacy Policy endpoint (Google Play Store compliance)
 server.get('/privacy', async (_request, reply) => {
   return reply.type('text/html').send(privacyPolicyHtml);
+});
+
+// Account Deletion Request endpoint (Google Play Store compliance)
+server.get('/delete-account', async (_request, reply) => {
+  return reply.type('text/html').send(deleteAccountHtml);
 });
 
 // Serve uploaded profile avatar images

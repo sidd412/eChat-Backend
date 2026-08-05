@@ -54,7 +54,7 @@ const UserSchema = new Schema<IUser>(
       }
     },
     country: { type: String, default: 'Global' },
-    coinsBalance: { type: Number, default: 100, required: true },
+    coinsBalance: { type: Number, default: 1000, required: true },
     preferences: {
       gender: { type: String, enum: ['Male', 'Female', 'All'], default: 'All' },
       minAge: { type: Number, default: 18 },

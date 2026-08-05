@@ -30,7 +30,7 @@ export const loginGuest = async (request: FastifyRequest, reply: FastifyReply) =
     const newUser = new User({
       userId: guestId,
       name: guestName,
-      coinsBalance: 100, // 100 Free Coins (10 Minutes)
+      coinsBalance: 1000, // 1000 Free Coins for Google Review Testing
       isOnline: true,
       fcmToken,
       preferences: {
@@ -96,7 +96,7 @@ export const loginGoogle = async (request: FastifyRequest, reply: FastifyReply) 
         name,
         email,
         avatar,
-        coinsBalance: 100, // 100 free coins
+        coinsBalance: 1000, // 1000 free coins for Google review testing
         isOnline: true,
         fcmToken,
         preferences: {

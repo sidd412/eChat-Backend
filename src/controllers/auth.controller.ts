@@ -120,9 +120,13 @@ export const loginGoogle = async (request: FastifyRequest, reply: FastifyReply) 
         avatar: user.avatar,
         gender: user.gender,
         age: user.age,
+        dob: user.dob,
+        bio: user.bio,
+        contactNumber: user.contactNumber,
         coinsBalance: user.coinsBalance,
         preferences: user.preferences,
-        country: user.country
+        country: user.country,
+        referralCode: user.referralCode
       }
     });
   } catch (error: any) {
@@ -177,7 +181,7 @@ export const updateProfile = async (request: FastifyRequest, reply: FastifyReply
     if (name) user.name = name;
     if (gender) user.gender = gender;
     if (age !== undefined) user.age = Number(age);
-    if (dob) user.dob = dob;
+    if (dob !== undefined) user.dob = dob;
     if (bio !== undefined) user.bio = bio;
     if (contactNumber !== undefined) user.contactNumber = contactNumber;
     if (avatar && avatar.startsWith('data:image')) {
@@ -231,9 +235,13 @@ export const updateProfile = async (request: FastifyRequest, reply: FastifyReply
         avatar: user.avatar,
         gender: user.gender,
         age: user.age,
+        dob: user.dob,
+        bio: user.bio,
+        contactNumber: user.contactNumber,
         coinsBalance: user.coinsBalance,
         preferences: user.preferences,
-        country: user.country
+        country: user.country,
+        referralCode: user.referralCode
       }
     });
   } catch (error: any) {

@@ -6,14 +6,14 @@ import crypto from 'crypto';
 const CHECK_IN_REWARDS = [10, 20, 30, 40, 50, 75, 100]; // 7 days rewards
 
 const SPIN_PRIZES = [
-  { index: 0, coins: 10, label: "10 Coins", weight: 30 },
-  { index: 1, coins: 25, label: "25 Coins", weight: 25 },
-  { index: 2, coins: 50, label: "50 Coins", weight: 15 },
-  { index: 3, coins: 100, label: "100 Coins", weight: 8 },
-  { index: 4, coins: 15, label: "15 Coins", weight: 25 },
+  { index: 0, coins: 10, label: "10 Coins", weight: 35 },
+  { index: 1, coins: 20, label: "20 Coins", weight: 25 },
+  { index: 2, coins: 15, label: "15 Coins", weight: 30 },
+  { index: 3, coins: 100, label: "100 Coins 👑", weight: 2 }, // Rare Grand Jackpot
+  { index: 4, coins: 25, label: "25 Coins", weight: 20 },
   { index: 5, coins: 30, label: "30 Coins", weight: 15 },
-  { index: 6, coins: 200, label: "Mega 200", weight: 2 },
-  { index: 7, coins: 5, label: "5 Coins", weight: 35 }
+  { index: 6, coins: 50, label: "50 Coins", weight: 5 },      // Rare
+  { index: 7, coins: 10, label: "10 Coins", weight: 35 }
 ];
 
 function isSameCalendarDay(d1: Date, d2: Date): boolean {

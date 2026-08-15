@@ -4,6 +4,7 @@ import { User } from '../models/user.model';
 import { Message } from '../models/message.model';
 import { Consent } from '../models/consent.model';
 import { Interaction } from '../models/interaction.model';
+import { Transaction } from '../models/transaction.model';
 import { redis } from '../config/redis';
 import { getIsFirebaseInitialized } from '../config/firebase';
 import { getMessaging } from 'firebase-admin/messaging';
@@ -453,6 +454,101 @@ export const initSockets = (io: Server) => {
         }
       } catch (error) {
         console.error('Mark as Read Error:', error);
+      }
+    });
+
+    // Handle Send In-Call Virtual Gift
+    socket.on('send_gift', async (data: { senderId: string; partnerId: string; giftId: string; giftName: string; coins: number; icon: string }) => {
+      try {
+        const { senderId, partnerId, giftId, giftName, coins, icon } = data;
+        if (!senderId || !partnerId || !coins || coins <= 0) return;
+
+        // Fetch sender to check balance
+        const senderUser = await User.findOne({ userId: senderId });
+        if (!senderUser || senderUser.coinsBalance < coins) {
+          socket.emit('gift_error', { message: 'Insufficient coin balance' });
+          return;
+        }
+
+        // Deduct from sender, increment receiver
+        const updatedSender = await User.findOneAndUpdate(
+          { userId: senderId, coinsBalance: { $gte: coins } },
+          { $inc: { coinsBalance: -coins, giftsSentCount: 1 } },
+          { new: true }
+        );
+
+        if (!updatedSender) {
+          socket.emit('gift_error', { message: 'Transaction failed, please retry' });
+          return;
+        }
+
+        const updatedReceiver = await User.findOneAndUpdate(
+          { userId: partnerId },
+          { $inc: { coinsBalance: coins, giftsReceivedCount: 1 } },
+          { new: true }
+        );
+
+        // Record gift transaction
+        const giftTxId = `gift_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        await Transaction.create({
+          userId: senderId,
+          orderId: giftTxId,
+          amount: 0,
+          coins: -coins,
+          status: 'SUCCESS',
+          gatewayResponse: { type: 'GIFT_SENT', giftId, giftName, partnerId, coins }
+        });
+
+        // Notify partner socket
+        const partnerSocketId = userToSocketRegistry.get(partnerId);
+        if (partnerSocketId) {
+          io.to(partnerSocketId).emit('gift_received', {
+            senderId,
+            senderName: senderUser.name,
+            giftId,
+            giftName,
+            coins,
+            icon,
+            timestamp: Date.now()
+          });
+          io.to(partnerSocketId).emit('wallet_updated', {
+            coinsBalance: updatedReceiver?.coinsBalance ?? 0
+          });
+        }
+
+        // Notify sender socket with updated balance
+        socket.emit('gift_sent_success', {
+          giftId,
+          coinsDeducted: coins,
+          newBalance: updatedSender.coinsBalance
+        });
+        socket.emit('wallet_updated', {
+          coinsBalance: updatedSender.coinsBalance
+        });
+
+        console.log(`🎁 [GIFT] ${senderUser.name} sent ${giftName} (${coins} coins) to ${partnerId}`);
+      } catch (err) {
+        console.error('Send Gift Error:', err);
+        socket.emit('gift_error', { message: 'Failed to send gift' });
+      }
+    });
+
+    // Handle Send In-Call Floating Emoji Reaction
+    socket.on('send_reaction', (data: { senderId: string; partnerId: string; emoji: string }) => {
+      try {
+        const { senderId, partnerId, emoji } = data;
+        if (!partnerId || !emoji) return;
+
+        const partnerSocketId = userToSocketRegistry.get(partnerId);
+        if (partnerSocketId) {
+          io.to(partnerSocketId).emit('reaction_received', {
+            senderId,
+            emoji,
+            timestamp: Date.now()
+          });
+        }
+      } catch (err) {
+        console.error('Send Reaction Error:', err);
       }
     });
 

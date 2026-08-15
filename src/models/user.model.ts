@@ -26,6 +26,8 @@ export interface IUser extends Document {
   isOnline: boolean;
   lastSeen: number;
   fcmToken?: string;
+  giftsReceivedCount: number;
+  giftsSentCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,7 +66,9 @@ const UserSchema = new Schema<IUser>(
     },
     isOnline: { type: Boolean, default: false },
     lastSeen: { type: Number, default: () => Date.now() },
-    fcmToken: { type: String }
+    fcmToken: { type: String },
+    giftsReceivedCount: { type: Number, default: 0 },
+    giftsSentCount: { type: Number, default: 0 }
   },
   {
     collection: 'echat_users',

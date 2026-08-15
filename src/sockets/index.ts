@@ -18,16 +18,18 @@ const activeMatchIntervals = new Map<string, NodeJS.Timeout>();
 // Helper function to safely end an active call
 const handleEndCall = async (io: Server, userId: string) => {
   try {
+    // 1. Clear any active coin deduction interval matching this user
+    for (const [matchKey, interval] of activeMatchIntervals.entries()) {
+      if (matchKey.includes(userId)) {
+        clearInterval(interval);
+        activeMatchIntervals.delete(matchKey);
+        console.log(`⏱️ Cleared active coin deduction interval for match: ${matchKey}`);
+      }
+    }
+
     const matchDataStr = await redis.get(`match:active:${userId}`);
     if (matchDataStr) {
       const { partnerId } = JSON.parse(matchDataStr);
-
-      // Clear active coin deduction interval
-      const matchId = [userId, partnerId].sort().join('_');
-      if (activeMatchIntervals.has(matchId)) {
-        clearInterval(activeMatchIntervals.get(matchId)!);
-        activeMatchIntervals.delete(matchId);
-      }
 
       // Clear locks & active mappings in Redis
       await redis.del(`match:active:${userId}`);
@@ -577,25 +579,9 @@ export const initSockets = (io: Server) => {
           // 2. Remove user from matchmaking queues
           await MatchmakingService.removeUser(userId, gender, country);
 
-          // 3. Check if user was in an active call
-          const matchDataStr = await redis.get(`match:active:${userId}`);
-          if (matchDataStr) {
-            const { partnerId } = JSON.parse(matchDataStr);
+          // 3. Clean active call pair, stop coin deductions & notify partner
+          await handleEndCall(io, userId);
 
-            // Clean active match pairs and unlock users
-            await redis.del(`match:active:${userId}`);
-            await redis.del(`match:active:${partnerId}`);
-            await redis.del(`user:busy:${userId}`);
-            await redis.del(`user:busy:${partnerId}`);
-
-            // Notify partner
-            const partnerSocketId = userToSocketRegistry.get(partnerId);
-            if (partnerSocketId) {
-              io.to(partnerSocketId).emit('partner_left', { message: 'Stranger disconnected' });
-            }
-
-            console.log(`⚠️ Disconnect Cleanup: Cleaned active call pair between ${userId} and ${partnerId}`);
-          }
           // 4. Update online status
           await User.updateOne({ userId }, { isOnline: false, lastSeen: Date.now() });
           io.emit('user_status_changed', { userId, isOnline: false, lastSeen: Date.now() });

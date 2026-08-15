@@ -28,6 +28,9 @@ export interface IUser extends Document {
   fcmToken?: string;
   giftsReceivedCount: number;
   giftsSentCount: number;
+  lastCheckInDate?: Date;
+  checkInStreak: number;
+  lastSpinDate?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,7 +71,10 @@ const UserSchema = new Schema<IUser>(
     lastSeen: { type: Number, default: () => Date.now() },
     fcmToken: { type: String },
     giftsReceivedCount: { type: Number, default: 0 },
-    giftsSentCount: { type: Number, default: 0 }
+    giftsSentCount: { type: Number, default: 0 },
+    lastCheckInDate: { type: Date },
+    checkInStreak: { type: Number, default: 0 },
+    lastSpinDate: { type: Date }
   },
   {
     collection: 'echat_users',

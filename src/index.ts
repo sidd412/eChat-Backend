@@ -11,6 +11,7 @@ import consentRoutes from './routes/consent.routes';
 import blockRoutes from './routes/block.routes';
 import paymentRoutes from './routes/payment.routes';
 import requestRoutes from './routes/request.routes';
+import rewardsRoutes from './routes/rewards.routes';
 import { initSockets } from './sockets';
 import { privacyPolicyHtml } from './utils/privacy';
 import { deleteAccountHtml } from './utils/deleteAccount';
@@ -50,6 +51,7 @@ server.register(consentRoutes, { prefix: '/api/consent' });
 server.register(blockRoutes, { prefix: '/api/block' });
 server.register(paymentRoutes, { prefix: '/api/payment' });
 server.register(requestRoutes, { prefix: '/api/requests' });
+server.register(rewardsRoutes, { prefix: '/api/rewards' });
 
 // Global Error Handler
 server.setErrorHandler((error, _request, reply) => {

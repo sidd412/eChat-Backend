@@ -14,6 +14,7 @@ import requestRoutes from './routes/request.routes';
 import { initSockets } from './sockets';
 import { privacyPolicyHtml } from './utils/privacy';
 import { deleteAccountHtml } from './utils/deleteAccount';
+import { landingPageHtml, termsOfServiceHtml, refundPolicyHtml, contactUsHtml } from './utils/landingPage';
 
 // Load environment variables
 dotenv.config();
@@ -64,9 +65,29 @@ server.get('/health', async () => {
   return { status: 'OK', uptime: process.uptime() };
 });
 
-// Privacy Policy endpoint (Google Play Store compliance)
+// Root Landing Page (Talksy official website for Razorpay & user discovery)
+server.get('/', async (_request, reply) => {
+  return reply.type('text/html').send(landingPageHtml);
+});
+
+// Privacy Policy endpoint (Google Play Store & Razorpay compliance)
 server.get('/privacy', async (_request, reply) => {
   return reply.type('text/html').send(privacyPolicyHtml);
+});
+
+// Terms of Service endpoint (Razorpay compliance)
+server.get('/terms', async (_request, reply) => {
+  return reply.type('text/html').send(termsOfServiceHtml);
+});
+
+// Refund Policy endpoint (Razorpay compliance)
+server.get('/refund', async (_request, reply) => {
+  return reply.type('text/html').send(refundPolicyHtml);
+});
+
+// Contact Us endpoint (Razorpay compliance)
+server.get('/contact', async (_request, reply) => {
+  return reply.type('text/html').send(contactUsHtml);
 });
 
 // Account Deletion Request endpoint (Google Play Store compliance)

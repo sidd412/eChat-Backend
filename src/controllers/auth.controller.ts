@@ -279,6 +279,41 @@ export const toggleInteraction = async (request: FastifyRequest, reply: FastifyR
 };
 
 // 6. Retrieve Interacted Users List
+const formatWhatsAppTime = (timestamp: number): string => {
+  if (!timestamp) return 'Just now';
+  const date = new Date(timestamp);
+  const now = new Date();
+
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
+
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
+  if (isYesterday) {
+    return 'Yesterday';
+  }
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
 export const getInteractions = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
     const requester = (request as any).user;
@@ -304,22 +339,43 @@ export const getInteractions = async (request: FastifyRequest, reply: FastifyRep
           senderId: item.targetUserId, // sender is the other person
           readStatus: false
         });
+
+        // Query the latest message in this conversation
+        const latestMsg = await Message.findOne({ chatId }).sort({ timestamp: -1 });
+
+        let lastMessageText = 'Tap to start conversation';
+        let lastMessageSenderId: string | null = null;
+        let lastMessageReadStatus: boolean | null = null;
+        let msgTimestamp: number = item.timestamp || Date.now();
+
+        if (latestMsg) {
+          lastMessageText = latestMsg.text;
+          msgTimestamp = latestMsg.timestamp;
+          lastMessageSenderId = latestMsg.senderId;
+          lastMessageReadStatus = latestMsg.readStatus;
+        }
         
         return {
           id: item.targetUserId,
           name: targetUser?.name || `User ${item.targetUserId.substring(0, 4)}`,
           avatar: targetUser?.avatar || '',
-          lastMessage: item.categories.join(', '),
-          time: 'Just now',
+          lastMessage: lastMessageText,
+          time: formatWhatsAppTime(msgTimestamp),
+          timestamp: msgTimestamp,
+          lastMessageSenderId,
+          lastMessageReadStatus,
           categories: item.categories,
           unreadCount,
           isLiked: item.categories.includes('liked'),
-          isAdded: item.categories.includes('added') || item.categories.includes('consent'),
+          isAdded: item.categories.includes('added') || item.categories.includes('consent') || item.categories.includes('friend'),
           isOnline: targetUser?.isOnline || false,
           lastSeen: targetUser?.lastSeen || 0
         };
       })
     );
+
+    // Sort conversations: newest message at the top
+    list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     return reply.send({ success: true, interactions: list });
   } catch (error) {

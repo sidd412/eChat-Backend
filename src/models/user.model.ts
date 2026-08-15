@@ -31,6 +31,10 @@ export interface IUser extends Document {
   lastCheckInDate?: Date;
   checkInStreak: number;
   lastSpinDate?: Date;
+  referralCode?: string;
+  referredBy?: string;
+  referralCount: number;
+  blockContactsMatching: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,7 +78,11 @@ const UserSchema = new Schema<IUser>(
     giftsSentCount: { type: Number, default: 0 },
     lastCheckInDate: { type: Date },
     checkInStreak: { type: Number, default: 0 },
-    lastSpinDate: { type: Date }
+    lastSpinDate: { type: Date },
+    referralCode: { type: String, unique: true, sparse: true, index: true },
+    referredBy: { type: String },
+    referralCount: { type: Number, default: 0 },
+    blockContactsMatching: { type: Boolean, default: false }
   },
   {
     collection: 'echat_users',

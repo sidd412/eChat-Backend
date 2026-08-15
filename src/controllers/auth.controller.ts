@@ -343,6 +343,8 @@ export const getUserProfile = async (request: FastifyRequest, reply: FastifyRepl
         userId: user.userId,
         name: user.name,
         avatar: user.avatar,
+        contactNumber: user.contactNumber,
+        bio: user.bio,
         isOnline: user.isOnline,
         lastSeen: user.lastSeen,
         coinsBalance: user.coinsBalance

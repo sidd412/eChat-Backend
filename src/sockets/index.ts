@@ -290,6 +290,16 @@ export const initSockets = (io: Server) => {
         socket.emit('message_delivered', { messageId, chatId, senderId, text, timestamp });
         console.log(`📨 [MSG] Message saved & delivered receipt sent. chatId=${chatId}, sender=${senderId}, receiver=${receiverId}`);
 
+        // Ensure sender has interaction record so profile appears under Contacts & All in Chats Home
+        await Interaction.findOneAndUpdate(
+          { userId: senderId, targetUserId: receiverId },
+          {
+            $addToSet: { categories: 'friend' },
+            $set: { timestamp, isBlocked: false }
+          },
+          { upsert: true, new: true }
+        );
+
         // 3. Check if receiver has blocked the sender or already added them
         const receiverInteraction = await Interaction.findOne({ userId: receiverId, targetUserId: senderId });
         console.log(`📨 [MSG] Receiver interaction check: exists=${!!receiverInteraction}, isBlocked=${receiverInteraction?.isBlocked}`);

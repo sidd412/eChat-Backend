@@ -274,3 +274,81 @@ export const getPurchaseHistory = async (request: FastifyRequest, reply: Fastify
     return reply.code(500).send({ message: 'Failed to fetch history' });
   }
 };
+
+// Product ID to coins mapping
+const PRODUCT_COIN_MAPPING: Record<string, { coins: number; amount: number }> = {
+  talksy_coins_50: { coins: 50, amount: 10 },
+  talksy_coins_100: { coins: 100, amount: 20 },
+  talksy_coins_260: { coins: 260, amount: 49 },
+  talksy_coins_550: { coins: 550, amount: 99 },
+  talksy_coins_2000: { coins: 2000, amount: 149 }
+};
+
+// Verify & Process Google Play In-App Purchase
+export const verifyPlayPurchase = async (request: FastifyRequest, reply: FastifyReply) => {
+  try {
+    const requester = (request as any).user;
+    const { orderId, purchaseToken, productId, packageName } = request.body as {
+      orderId?: string;
+      purchaseToken: string;
+      productId: string;
+      packageName?: string;
+    };
+
+    if (!purchaseToken || !productId) {
+      return reply.code(400).send({ success: false, message: 'Purchase token and productId are required' });
+    }
+
+    // 1. Check for duplicate redemption of same purchase token
+    const existingTx = await Transaction.findOne({ orderId: orderId || purchaseToken });
+    if (existingTx && existingTx.status === 'SUCCESS') {
+      const user = await User.findOne({ userId: requester.userId });
+      return reply.code(200).send({
+        success: true,
+        message: 'Purchase already processed',
+        coinsBalance: user?.coinsBalance ?? 0
+      });
+    }
+
+    const packDetails = PRODUCT_COIN_MAPPING[productId] || { coins: 50, amount: 10 };
+    const coinsToAdd = packDetails.coins;
+    const amount = packDetails.amount;
+
+    // 2. Find user & credit coins atomically
+    const user = await User.findOne({ userId: requester.userId });
+    if (!user) {
+      return reply.code(404).send({ success: false, message: 'User not found' });
+    }
+
+    user.coinsBalance = (user.coinsBalance || 0) + coinsToAdd;
+    await user.save();
+
+    // 3. Record transaction in database
+    const transaction = new Transaction({
+      userId: requester.userId,
+      orderId: orderId || `play_${purchaseToken.substring(0, 24)}`,
+      amount,
+      coins: coinsToAdd,
+      status: 'SUCCESS',
+      gatewayResponse: {
+        productId,
+        purchaseToken,
+        packageName: packageName || 'com.videoChatting.echat',
+        verifiedAt: new Date()
+      }
+    });
+    await transaction.save();
+
+    console.log(`🎉 [GOOGLE PLAY] Added ${coinsToAdd} coins to user ${requester.userId} for product ${productId}. New Balance: ${user.coinsBalance}`);
+
+    return reply.code(200).send({
+      success: true,
+      message: `Successfully credited ${coinsToAdd} coins!`,
+      coinsBalance: user.coinsBalance
+    });
+  } catch (error: any) {
+    console.error('Verify Google Play Purchase Error:', error);
+    return reply.code(500).send({ success: false, message: 'Failed to verify purchase', error: error.message });
+  }
+};
+

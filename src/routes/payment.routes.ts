@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { createOrder, juspayWebhook, verifyOrder, getPurchaseHistory, verifyPlayPurchase } from '../controllers/payment.controller';
+import { createOrder, juspayWebhook, verifyOrder, getPurchaseHistory, verifyPlayPurchase, getInvoice } from '../controllers/payment.controller';
 import { verifyJWT } from '../middlewares/auth.middleware';
 
 export default async function paymentRoutes(fastify: FastifyInstance) {
@@ -14,7 +14,10 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
   
   // Protected route to get purchase history
   fastify.get('/history', { preHandler: [verifyJWT] }, getPurchaseHistory);
+
+  // Protected route to get invoice for a specific order
+  fastify.get('/invoice/:orderId', { preHandler: [verifyJWT] }, getInvoice);
   
-  // Public webhook route (Juspay server will hit this)
+  // Public webhook route
   fastify.post('/webhook', juspayWebhook);
 }

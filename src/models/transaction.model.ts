@@ -3,6 +3,7 @@ import { Schema, model, Document } from 'mongoose';
 export interface ITransaction extends Document {
   userId: string;
   orderId: string;
+  productId?: string;
   amount: number;
   coins: number;
   status: 'PENDING' | 'SUCCESS' | 'FAILED';
@@ -15,6 +16,7 @@ const TransactionSchema = new Schema<ITransaction>(
   {
     userId: { type: String, required: true, index: true },
     orderId: { type: String, required: true, unique: true, index: true },
+    productId: { type: String },
     amount: { type: Number, required: true },
     coins: { type: Number, required: true },
     status: { type: String, enum: ['PENDING', 'SUCCESS', 'FAILED'], default: 'PENDING' },

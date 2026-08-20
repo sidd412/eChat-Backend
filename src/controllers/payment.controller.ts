@@ -327,6 +327,7 @@ export const verifyPlayPurchase = async (request: FastifyRequest, reply: Fastify
     const transaction = new Transaction({
       userId: requester.userId,
       orderId: orderId || `play_${purchaseToken.substring(0, 24)}`,
+      productId,
       amount,
       coins: coinsToAdd,
       status: 'SUCCESS',
@@ -352,3 +353,53 @@ export const verifyPlayPurchase = async (request: FastifyRequest, reply: Fastify
   }
 };
 
+// Get Invoice for a specific order
+export const getInvoice = async (request: FastifyRequest, reply: FastifyReply) => {
+  try {
+    const requester = (request as any).user;
+    const { orderId } = request.params as { orderId: string };
+
+    const transaction = await Transaction.findOne({ orderId, userId: requester.userId })
+      .select('orderId productId amount coins status createdAt');
+
+    if (!transaction) {
+      return reply.code(404).send({ success: false, message: 'Invoice not found' });
+    }
+
+    const user = await User.findOne({ userId: requester.userId }).select('name email');
+
+    const productNames: Record<string, string> = {
+      talksy_coins_50: '50 Talksy Coins (Starter Pack)',
+      talksy_coins_100: '100 Talksy Coins (Popular Pack)',
+      talksy_coins_260: '260 Talksy Coins + 10 Bonus (Best Value)',
+      talksy_coins_550: '550 Talksy Coins + 50 Bonus (Super Saver)',
+      talksy_coins_2000: '2000 Talksy Coins + 1000 Bonus (VIP Pack)',
+    };
+
+    const productLabel = transaction.productId
+      ? (productNames[transaction.productId] || `${transaction.coins} Talksy Coins`)
+      : `${transaction.coins} Talksy Coins`;
+
+    return reply.code(200).send({
+      success: true,
+      invoice: {
+        invoiceNumber: `TLK-${transaction.orderId.substring(0, 12).toUpperCase()}`,
+        orderId: transaction.orderId,
+        productId: transaction.productId || '',
+        productLabel,
+        coins: transaction.coins,
+        amountInr: transaction.amount,
+        status: transaction.status,
+        paymentMethod: 'Google Play Billing',
+        issuedAt: transaction.createdAt,
+        buyerName: user?.name || 'Talksy User',
+        buyerEmail: user?.email || '',
+        appName: 'Talksy',
+        appVersion: '1.0.1',
+      }
+    });
+  } catch (error: any) {
+    console.error('Get Invoice Error:', error);
+    return reply.code(500).send({ success: false, message: 'Failed to get invoice' });
+  }
+};
